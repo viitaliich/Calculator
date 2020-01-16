@@ -3,22 +3,31 @@
 #include <string>
 #include <iostream>
 #include <stack>
+#include <cmath>
 
 typedef std::vector <std::pair <int, std::string>> tokens_t;  // type for tokens (type - value)
+typedef union Num{
+    int inum;
+    double fnum;
+} num_t;
 
 enum token_types{
-    NUM,
+    I_NUM,
+    F_NUM,
     ADD,
     SUB,
     MUL,
     DIV,
+    MOD,
+    POW,
     O_PRN,
     C_PRN,
     ENDOFFILE
 };
 
 enum node_types{
-    N_NUM,
+    INUM_NODE,
+    FNUM_NODE,
     UN_OP,
     BI_OP
 };
@@ -80,7 +89,8 @@ private:
 
         // UNOP
         if (tokens[current].first == SUB || tokens[current].first == ADD ||
-            tokens[current].first == DIV || tokens[current].first == MUL){
+            tokens[current].first == DIV || tokens[current].first == MUL ||
+            tokens[current].first == MOD || tokens[current].first == POW){
             Node node;
             node.set_type(UN_OP);
             node.set_op(tokens[current].second);
@@ -92,25 +102,49 @@ private:
             return;
         }
 
-        // NUM
-        if (tokens[current].first == NUM){
+        // I_NUM
+        if (tokens[current].first == I_NUM){
             Node node;
-            node.set_type(N_NUM);
+            node.set_type(INUM_NODE);
+            node.set_num(tokens[current].second);
+            push_node(node);
+            return;
+        }
+
+        // F_NUM
+        if (tokens[current].first == F_NUM){
+            Node node;
+            node.set_type(FNUM_NODE);
             node.set_num(tokens[current].second);
             push_node(node);
             return;
         }
     }
 
-    void parse_multiplication(const tokens_t &tokens){
+    void parse_pow(const tokens_t &tokens){
         parse_initial(tokens);
         inc_cur();
-        while (tokens[current].first == MUL || tokens[current].first == DIV){
+        while (tokens[current].first == POW){
             Node node;
             node.set_type(BI_OP);
             node.set_op(tokens[current].second);
             inc_cur();
             parse_initial(tokens);
+            push_node(node);
+            inc_cur();
+        }
+        dec_cur();
+    }
+
+    void parse_multiplication(const tokens_t& tokens){
+        parse_pow(tokens);
+        inc_cur();
+        while (tokens[current].first == MUL || tokens[current].first == DIV || tokens[current].first == MOD){
+            Node node;
+            node.set_type(BI_OP);
+            node.set_op(tokens[current].second);
+            inc_cur();
+            parse_pow(tokens);
             push_node(node);
             inc_cur();
         }
@@ -136,7 +170,7 @@ public:
     std::vector<Node> nodes_out(){
         return nodes;
     }
-    
+
     void parse_addition(const tokens_t &tokens){
         parse_multiplication(tokens);
         inc_cur();
@@ -171,16 +205,20 @@ tokens_t tokenizer(const std::string& input){
             continue;
         }
 
-        // Integers
+        // Numbers
         if (std::isdigit(symbol)){
             value = "";
             value += symbol;
             symbol = input[++current];
-            while (std::isdigit(symbol)){
+            int type = I_NUM;
+            while (std::isdigit(symbol) || symbol == '.'){
+                if (symbol == '.'){
+                    type = F_NUM;
+                }
                 value += symbol;
                 symbol = input[++current];
             }
-            tokens.emplace_back(NUM, value);
+            tokens.emplace_back(type, value);
             continue;
         }
 
@@ -220,6 +258,24 @@ tokens_t tokenizer(const std::string& input){
             continue;
         }
 
+        // Mod
+        if (symbol == '%'){
+            value = "";
+            value += symbol;
+            symbol = input[++current];
+            tokens.emplace_back(MOD, value);
+            continue;
+        }
+
+        // Power
+        if (symbol == '^'){
+            value = "";
+            value += symbol;
+            symbol = input[++current];
+            tokens.emplace_back(POW, value);
+            continue;
+        }
+
         // Open parentheses
         if (symbol == '('){
             value = "";
@@ -244,90 +300,148 @@ tokens_t tokenizer(const std::string& input){
     return tokens;
 }
 
-int result(std::vector<Node>& nodes){
+bool double_int(const std::string& result){
+    bool success = false;
+    for (size_t i = 0; i < result.size(); i++){
+        if (result[i] == '.') {
+            success = true;
+            break;
+        }
+    }
+    return success;
+}
+
+std::string result(std::vector<Node>& nodes){
     std::stack<std::string> stack;
     size_t current = 0;
 
-    int numr, numl;
-    std::string res;
+    double numr, numl;
+    double res;
+    std::string ret;
+    num_t num;
+
     while (current < nodes.size()){
         switch (nodes[current].check_type()){
-            case N_NUM:
+            case INUM_NODE:
+                stack.push(nodes[current].check_num());
+                current++;
+                break;
+
+            case FNUM_NODE:
                 stack.push(nodes[current].check_num());
                 current++;
                 break;
 
             case BI_OP:
-                numr = std::stoi(stack.top());
+                numr = std::stod(stack.top());
                 stack.pop();
-                numl = std::stoi(stack.top());
+                numl = std::stod(stack.top());
                 stack.pop();
+                if (nodes[current].check_op() == "^"){
+                    res = pow(numl, numr);
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
+                    current++;
+                    break;
+                }
+                if (nodes[current].check_op() == "%"){
+                    res = (int)numl % (int)numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
+                    current++;
+                    break;
+                }
                 if (nodes[current].check_op() == "+"){
-                    res = "";
-                    res += std::to_string(numl + numr);
-                    stack.push(res);
+                    res = numl + numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
                     current++;
                     break;
                 }
                 if (nodes[current].check_op() == "-"){
-                    res = "";
-                    res += std::to_string(numl - numr);
-                    stack.push(res);
+                    res = numl - numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
                     current++;
                     break;
                 }
                 if (nodes[current].check_op() == "*"){
-                    res = "";
-                    res += std::to_string(numl * numr);
-                    stack.push(res);
+                    res = numl * numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
                     current++;
                     break;
                 }
                 if (nodes[current].check_op() == "/"){
-                    res = "";
-                    res += std::to_string(numl / numr);
-                    stack.push(res);
+                    res = numl / numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
                     current++;
                     break;
                 }
 
             case UN_OP:
-                numr = std::stoi(stack.top());
+                numr = std::stod(stack.top());
                 stack.pop();
-                if (nodes[current].check_op() == "-"){
-                    res = "";
-                    res += std::to_string(0 - numr);
-                    stack.push(res);
+                if (nodes[current].check_op() == "^"){
+                    res = pow(0, numr);
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
+                    current++;
+                    break;
+                }
+                if (nodes[current].check_op() == "%"){
+                    res = 0 % (int)numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
                     current++;
                     break;
                 }
                 if (nodes[current].check_op() == "+"){
-                    res = "";
-                    res += std::to_string(0 + numr);
-                    stack.push(res);
+                    res = 0 + numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
+                    current++;
+                    break;
+                }
+                if (nodes[current].check_op() == "-"){
+                    res = 0 - numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
                     current++;
                     break;
                 }
                 if (nodes[current].check_op() == "*"){
-                    res = "";
-                    res += std::to_string(0 * numr);
-                    stack.push(res);
+                    res = 0 * numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
                     current++;
                     break;
                 }
                 if (nodes[current].check_op() == "/"){
-                    res = "";
-                    res += std::to_string(0 / numr);
-                    stack.push(res);
+                    res = 0 / numr;
+                    ret = "";
+                    ret += std::to_string(res);
+                    stack.push(ret);
                     current++;
                     break;
                 }
-
             default:
                 std::cout << "ERROR" << std::endl;
         }
     }
-    return std::stoi(stack.top());
+    return ret;
 }
 
 void tokens_out(tokens_t tokens){
@@ -337,7 +451,7 @@ void tokens_out(tokens_t tokens){
 }
 
 int main(int argc, char** argv){
-    std::string input = "-9";
+    std::string input = "2.9%5.6";
     input += 'q';
     tokens_t tokens = tokenizer(input);
 //    tokens_out(tokens);
