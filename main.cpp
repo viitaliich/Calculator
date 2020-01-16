@@ -66,11 +66,12 @@ private:
         nodes.emplace_back(node);
     }
 
-    void parse_factor(const tokens_t& tokens){
+    void parse_initial(const tokens_t &tokens){
         // (EXPR)
         if (tokens[current].first == O_PRN){
             inc_cur();
-            parse_expr(tokens);
+            parse_addition(tokens);
+            inc_cur();
             if (tokens[current].first != C_PRN){
                 std::cout << "Need push C_PRN node!!!";     // ???
             }
@@ -85,7 +86,7 @@ private:
             node.set_op(tokens[current].second);
 
             inc_cur();
-            parse_factor(tokens);
+            parse_initial(tokens);
 
             push_node(node);
             return;
@@ -101,15 +102,15 @@ private:
         }
     }
 
-    void parse_term(const tokens_t& tokens){
-        parse_factor(tokens);
+    void parse_multiplication(const tokens_t &tokens){
+        parse_initial(tokens);
         inc_cur();
         while (tokens[current].first == MUL || tokens[current].first == DIV){
             Node node;
             node.set_type(BI_OP);
             node.set_op(tokens[current].second);
             inc_cur();
-            parse_factor(tokens);
+            parse_initial(tokens);
             push_node(node);
             inc_cur();
         }
@@ -135,17 +136,16 @@ public:
     std::vector<Node> nodes_out(){
         return nodes;
     }
-
-
-    void parse_expr(const tokens_t& tokens){
-        parse_term(tokens);
+    
+    void parse_addition(const tokens_t &tokens){
+        parse_multiplication(tokens);
         inc_cur();
         while (tokens[current].first == ADD || tokens[current].first == SUB){
             Node node;
             node.set_type(BI_OP);
             node.set_op(tokens[current].second);
             inc_cur();
-            parse_term(tokens);
+            parse_multiplication(tokens);
             push_node(node);
             inc_cur();
         }
@@ -242,16 +242,6 @@ tokens_t tokenizer(const std::string& input){
         exit(0);
     }
     return tokens;
-}
-
-std::vector<Node> parser(const tokens_t& tokens){
-    Parser p;
-    while (p.out_cur() < tokens.size()-1){
-        p.parse_expr(tokens);
-        p.inc_cur();
-    }
-    std::vector<Node> nodes = p.nodes_out();
-    return nodes;
 }
 
 int result(std::vector<Node>& nodes){
@@ -351,7 +341,14 @@ int main(int argc, char** argv){
     input += 'q';
     tokens_t tokens = tokenizer(input);
 //    tokens_out(tokens);
-    std::vector<Node> nodes = parser(tokens);
+
+    Parser p;
+    while (p.out_cur() < tokens.size()-1){
+        p.parse_addition(tokens);
+        p.inc_cur();
+    }
+    std::vector<Node> nodes = p.nodes_out();
+
     std::cout << result(nodes) << std::endl;
     return 0;
 }
