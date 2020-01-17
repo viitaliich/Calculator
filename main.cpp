@@ -1,3 +1,17 @@
+/*
+ * Calculator.
+ * Supported operations:
+ *      +, -, *, /, %, ^, ()
+ *
+ * Grammar:
+ *      S                -> ADDITION
+ *      ADDITION         -> MULTIPLICATION { +|- MULTIPLICATION }
+ *      MULTIPLICATION   -> POW { *|/|% POW }
+ *      POW              -> INITIAL { ^ INITIAL }
+ *      INITIAL          -> (ADDITION) | UNOP INITIAL | num
+ *      UNOP             -> -|+|*|/
+ */
+
 #include <stdlib.h>
 #include <vector>
 #include <string>
@@ -6,14 +20,9 @@
 #include <cmath>
 
 typedef std::vector <std::pair <int, std::string>> tokens_t;  // type for tokens (type - value)
-typedef union Num{
-    int inum;
-    double fnum;
-} num_t;
 
 enum token_types{
-    I_NUM,
-    F_NUM,
+    NUM,
     ADD,
     SUB,
     MUL,
@@ -103,7 +112,7 @@ private:
         }
 
         // I_NUM
-        if (tokens[current].first == I_NUM){
+        if (tokens[current].first == NUM){
             Node node;
             node.set_type(INUM_NODE);
             node.set_num(tokens[current].second);
@@ -112,7 +121,7 @@ private:
         }
 
         // F_NUM
-        if (tokens[current].first == F_NUM){
+        if (tokens[current].first == NUM){
             Node node;
             node.set_type(FNUM_NODE);
             node.set_num(tokens[current].second);
@@ -210,10 +219,10 @@ tokens_t tokenizer(const std::string& input){
             value = "";
             value += symbol;
             symbol = input[++current];
-            int type = I_NUM;
+            int type = NUM;
             while (std::isdigit(symbol) || symbol == '.'){
                 if (symbol == '.'){
-                    type = F_NUM;
+                    type = NUM;
                 }
                 value += symbol;
                 symbol = input[++current];
@@ -315,10 +324,9 @@ std::string result(std::vector<Node>& nodes){
     std::stack<std::string> stack;
     size_t current = 0;
 
-    double numr, numl;
+    double numr, numl, num;
     double res;
     std::string ret;
-    num_t num;
 
     while (current < nodes.size()){
         switch (nodes[current].check_type()){
